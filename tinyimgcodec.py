@@ -118,6 +118,7 @@ def fill_image(im):
     width, height = im.shape[1], im.shape[0]
     if width % 8 != 0:
         im = np.hstack((im, np.zeros((height, 8 - width % 8), dtype=np.uint8)))
+    width, height = im.shape[1], im.shape[0]
     if height % 8 != 0:
         im = np.vstack((im, np.zeros((8 - height % 8, width), dtype=np.uint8)))
     return im
