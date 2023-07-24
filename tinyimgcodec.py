@@ -89,44 +89,58 @@ def dequantize(block):
     return block * QUANT
 
 
+def run_length_encode(arr):
+    # determine where the sequence is ending prematurely
+    last_nonzero = -1
+    for i, elem in enumerate(arr):
+        if elem != 0:
+            last_nonzero = i
+    # each symbol is a (RUNLENGTH, SIZE) tuple
+    symbols = []
+    # values are binary representations of array elements using SIZE bits
+    values = []
+    run_length = 0
+    for i, elem in enumerate(arr):
+        if i > last_nonzero:
+            symbols.append((0, 0))
+            values.append(int_to_binstr(0))
+            break
+        elif elem == 0 and run_length < 15:
+            run_length += 1
+        else:
+            size = bits_required(elem)
+            symbols.append((run_length, size))
+            values.append(int_to_binstr(elem))
+            run_length = 0
+    return symbols, values
+
+def fill_image(im):
+    width, height = im.shape[1], im.shape[0]
+    if width % 8 != 0:
+        im = np.hstack((im, np.zeros((height, 8 - width % 8), dtype=np.uint8)))
+    if height % 8 != 0:
+        im = np.vstack((im, np.zeros((8 - height % 8, width), dtype=np.uint8)))
+    return im
+
 class ImageEncoder:
     def __init__(self) -> None:
         pass
 
-    def run_length_encode(self, arr):
-        # determine where the sequence is ending prematurely
-        last_nonzero = -1
-        for i, elem in enumerate(arr):
-            if elem != 0:
-                last_nonzero = i
-        # each symbol is a (RUNLENGTH, SIZE) tuple
-        symbols = []
-        # values are binary representations of array elements using SIZE bits
-        values = []
-        run_length = 0
-        for i, elem in enumerate(arr):
-            if i > last_nonzero:
-                symbols.append((0, 0))
-                values.append(int_to_binstr(0))
-                break
-            elif elem == 0 and run_length < 15:
-                run_length += 1
-            else:
-                size = bits_required(elem)
-                symbols.append((run_length, size))
-                values.append(int_to_binstr(elem))
-                run_length = 0
-        return symbols, values
 
     def encode(self, im):
-        width, height = im.shape[0], im.shape[1]
+        buf = io.StringIO()
+        # write width and hight
+        buf.write(uint_to_binstr(im.shape[1], IMG_SIZE_BITS))
+        buf.write(uint_to_binstr(im.shape[0], IMG_SIZE_BITS))
+        im = fill_image(im)
+        width, height = im.shape[1], im.shape[0]
         blocks_count = width // 8 * height // 8
         # dc is the top-left cell of the block, ac are all the other cells
         dc = np.empty((blocks_count), dtype=np.int32)
         ac = np.empty((blocks_count, 63), dtype=np.int32)
         block_index = 0
-        for i in range(0, width, 8):
-            for j in range(0, height, 8):
+        for i in range(0, height, 8):
+            for j in range(0, width, 8):
                 # split 8x8 block and center the data range on zero
                 # [0, 255] --> [-128, 127]
                 block = np.float32(im[i : i + 8, j : j + 8]) - 128
@@ -136,19 +150,15 @@ class ImageEncoder:
                 dc[block_index] = zz[0]
                 ac[block_index, :] = zz[1:]
                 block_index += 1
+        dc[1:] = np.diff(dc)
         ht_dc = HuffmanTree(np.vectorize(bits_required)(dc))
         ht_ac = HuffmanTree(
-            flatten(self.run_length_encode(ac[i])[0] for i in range(blocks_count))
+            flatten(run_length_encode(ac[i])[0] for i in range(blocks_count))
         )
 
         dc_table = ht_dc.value_to_bitstring_table()
         ac_table = ht_ac.value_to_bitstring_table()
 
-        buf = io.StringIO()
-
-        # write width and hight
-        buf.write(uint_to_binstr(512, IMG_SIZE_BITS))
-        buf.write(uint_to_binstr(512, IMG_SIZE_BITS))
         # write dc table
         buf.write(uint_to_binstr(len(dc_table), TABLE_SIZE_BITS))
         for key, value in dc_table.items():
@@ -165,7 +175,7 @@ class ImageEncoder:
 
         for b in range(blocks_count):
             category = bits_required(dc[b])
-            symbols, values = self.run_length_encode(ac[b])
+            symbols, values = run_length_encode(ac[b])
 
             buf.write(dc_table[category])
             buf.write(int_to_binstr(dc[b]))
@@ -209,8 +219,8 @@ class ImageDecoder:
     def decode(self):
         width = self.read_uint(IMG_SIZE_BITS)
         height = self.read_uint(IMG_SIZE_BITS)
-        blocks_count = width // 8 * height // 8
-        blocks_per_line = width // 8
+        blocks_count = int(np.ceil(width / 8) * np.ceil(height / 8))
+        blocks_per_line = int(np.ceil(width / 8))
 
         dc = np.empty((blocks_count), dtype=np.int32)
         ac = np.empty((blocks_count, 63), dtype=np.int32)
@@ -219,10 +229,13 @@ class ImageDecoder:
         ac_table = self.read_ac_table()
 
         im = np.zeros((height, width), dtype=np.uint8)
+        im = fill_image(im)
 
+        dc_prev = 0
         for block_index in range(blocks_count):
             size = self.read_huffman_code(dc_table)
-            dc[block_index] = self.read_int(size)
+            dc[block_index] = self.read_int(size) + dc_prev
+            dc_prev = dc[block_index]
             cells_count = 0
             while cells_count < 63:
                 run_length, size = self.read_huffman_code(ac_table)
@@ -251,7 +264,7 @@ class ImageDecoder:
             block[block > 255] = 255
             block[block < 0] = 0
             im[i : i + 8, j : j + 8] = block
-        return im
+        return im[:height, :width]
 
     def read_huffman_code(self, table):
         prefix = ""

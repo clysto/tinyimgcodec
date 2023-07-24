@@ -6,7 +6,7 @@ from PIL import Image
 import numpy as np
 
 
-im = Image.open(sys.argv[1])
+im = Image.open(sys.argv[1]).convert("L")
 
 encoder = ImageEncoder()
 out = encoder.encode(np.asarray(im))
