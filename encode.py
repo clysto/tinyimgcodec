@@ -5,8 +5,6 @@ import sys
 import numpy as np
 from PIL import Image
 
-sys.path.append("src")
-
 from tinyimgcodec import compress
 
 im = Image.open(sys.argv[1]).convert("L")

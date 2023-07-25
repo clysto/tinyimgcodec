@@ -4,8 +4,6 @@ import sys
 
 import matplotlib.pyplot as plt
 
-sys.path.append("src")
-
 from tinyimgcodec import decompress
 
 with open(sys.argv[1], "rb") as f:

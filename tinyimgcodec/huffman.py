@@ -3,7 +3,6 @@ import itertools
 
 import numpy as np
 from bidict import bidict
-from bitarray import bitarray
 
 from .constants import AC, DC, EOB, HUFFMAN_CATEGORY_CODEWORD, ZRL
 from .utils import binstr_to_int, bits_required, int_to_binstr
