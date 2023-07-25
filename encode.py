@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 
-from tinyimgcodec import ImageEncoder
 import sys
-from PIL import Image
-import numpy as np
 
+import numpy as np
+from PIL import Image
+
+sys.path.append("src")
+
+from tinyimgcodec import compress
 
 im = Image.open(sys.argv[1]).convert("L")
 
-encoder = ImageEncoder()
-out = encoder.encode(np.asarray(im))
+out = compress(np.asarray(im))
 
 byte_size = len(out)
 print(f"{byte_size} bytes")
