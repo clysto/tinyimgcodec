@@ -1,0 +1,9 @@
+bidict
+bitarray
+matplotlib
+numpy
+pandas
+Pillow
+scipy
+six
+tqdm
