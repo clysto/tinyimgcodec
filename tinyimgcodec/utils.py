@@ -6,27 +6,6 @@ from scipy.fftpack import dct, idct
 from .constants import LUMINANCE_QUANTIZATION_TABLE
 
 
-def int_to_binstr(n):
-    if n == 0:
-        return ""
-    binstr = f"{abs(n):0b}"
-    return binstr if n > 0 else "".join(map(lambda c: "0" if c == "1" else "1", binstr))
-
-
-def binstr_to_int(binstr):
-    if binstr == "":
-        return 0
-    return (
-        int(binstr, 2)
-        if binstr[0] == "1"
-        else int("".join(map(lambda c: "0" if c == "1" else "1", binstr)), 2) * -1
-    )
-
-def uint_to_binstr(n, size):
-    binstr = f"{n:0b}"
-    return binstr.zfill(size)
-
-
 def bits_required(x):
     return np.ceil(np.log2(np.abs(x) + 1)).astype(np.int32)
 

@@ -1,4 +1,3 @@
-import io
 import itertools
 from queue import PriorityQueue
 
@@ -7,7 +6,7 @@ from bidict import bidict
 
 from .bitbuffer import BitBuffer
 from .constants import AC, DC, EOB, HUFFMAN_CATEGORY_CODEWORD, ZRL
-from .utils import binstr_to_int, bits_required, int_to_binstr
+from .utils import bits_required
 
 
 def encode_run_length(seq):
@@ -46,18 +45,18 @@ def encode_huffman(
     category_codeword=HUFFMAN_CATEGORY_CODEWORD,
 ):
     if dc_ac == DC:
-        values = map(int_to_binstr, symbols)
+        values = symbols
         categories = bits_required(symbols)
     elif dc_ac == AC:
         symbols = np.array(symbols)
-        values = map(int_to_binstr, symbols[:, 1].copy())
+        values = symbols[:, 1].copy()
         symbols[:, 1] = bits_required(symbols[:, 1])
         categories = map(tuple, symbols)
     else:
         raise ValueError("dc_ac should be either DC or AC.")
     for category, value in zip(categories, values):
         buf.write(category_codeword[dc_ac][category])
-        buf.write(value)
+        buf.write_int(int(value))
 
 
 def read_huffman_code(buf: BitBuffer, table: bidict):
@@ -78,13 +77,13 @@ def decode_huffman(
     if dc_ac == DC:
         for _ in range(length):
             category = read_huffman_code(buf, table)
-            value = binstr_to_int(buf.read(category).to01())
+            value = buf.read_int(category)
             symbols.append(value)
     elif dc_ac == AC:
         while True:
             category = read_huffman_code(buf, table)
             run_length, size = category
-            value = binstr_to_int(buf.read(size).to01())
+            value = buf.read_int(size)
             symbols.append((run_length, value))
             if category == EOB:
                 break

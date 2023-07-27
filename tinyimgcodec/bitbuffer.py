@@ -6,7 +6,7 @@ from bitarray.util import ba2int, int2ba
 
 class BitBuffer:
     def __init__(self):
-        self.__bitarray: bitarray = bitarray(endian="little")
+        self.__bitarray: bitarray = bitarray(endian="big")
         self.__pos = 0
 
     @classmethod
@@ -38,7 +38,7 @@ class BitBuffer:
         return ret
 
     def write_uint(self, n, size):
-        self.__bitarray.extend(int2ba(n, size))
+        self.__bitarray.extend(int2ba(int(n), size))
         self.__pos = len(self.__bitarray)
 
     def read_uint(self, size):
@@ -49,7 +49,7 @@ class BitBuffer:
     def write_int(self, n):
         if n == 0:
             return
-        x = int2ba(abs(n))
+        x = int2ba(int(abs(n)))
         if n < 0:
             x.invert()
         self.__bitarray.extend(x)
@@ -59,10 +59,12 @@ class BitBuffer:
         if size == 0:
             return 0
         ret = self.__bitarray[self.__pos : self.__pos + size]
+        self.__pos += size
         if ret[0] == 0:
             ret.invert()
-        ret = ba2int(ret)
-        self.__pos += size
+            ret = ba2int(ret) * -1
+        else:
+            ret = ba2int(ret)
         return ret
 
     def seek(self, pos):

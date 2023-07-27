@@ -1,9 +1,8 @@
-import io
 import math
 from struct import pack, unpack
 
 import numpy as np
-from bitarray import bitarray
+from bidict import bidict
 
 from .bitbuffer import BitBuffer
 from .constants import AC, DC, HUFFMAN_CATEGORY_CODEWORD, ZIGZAG_ORDER
@@ -21,7 +20,6 @@ from .utils import (
     block_quantize,
     block_slice,
     pad_image,
-    uint_to_binstr,
 )
 
 
@@ -66,21 +64,22 @@ def decode(data: np.ndarray):
     return coeffs.astype(np.uint8)
 
 
-def make_header(buf:BitBuffer, image_info, category_codeword=None):
+def make_header(buf: BitBuffer, image_info, category_codeword=None):
     if category_codeword is not None:
-        table = bitarray()
+        table = BitBuffer()
         for dc_ac in [DC, AC]:
-            table.extend(uint_to_binstr(len(category_codeword[dc_ac]), 16))
+            table.write_uint(len(category_codeword[dc_ac]), 16)
             for category, codeword in category_codeword[dc_ac].items():
                 if dc_ac == DC:
-                    table.extend(uint_to_binstr(category, 4))
-                    table.extend(uint_to_binstr(len(codeword), 4))
+                    table.write_uint(category, 4)
+                    table.write_uint(len(codeword), 4)
                 else:
-                    table.extend(uint_to_binstr(category[0], 4))
-                    table.extend(uint_to_binstr(category[1], 4))
-                    table.extend(uint_to_binstr(len(codeword), 8))
-                table.extend(codeword)
+                    table.write_uint(category[0], 4)
+                    table.write_uint(category[1], 4)
+                    table.write_uint(len(codeword), 8)
+                table.write(codeword)
         flag = 1 << 15
+        table = table.to_bytes()
         table_length = len(table)
     else:
         flag = 0
@@ -95,39 +94,39 @@ def make_header(buf:BitBuffer, image_info, category_codeword=None):
     )
     buf.write_bytes(header)
     if category_codeword is not None:
-        buf.write(table)
-    return header
+        buf.write_bytes(table)
 
 
-def parse_header(header):
-    height, width, quality, flag, table_length = unpack("IIIHH", header[:16])
+def parse_header(buf: BitBuffer, info: dict):
+    header = buf.read_bytes(16)
+    height, width, quality, flag, table_length = unpack("IIIHH", header)
+    buf = BitBuffer.from_bytes(buf.read_bytes(table_length))
     if flag & (1 << 15):
-        table_bits = bitarray()
-        table_bits.frombytes(header[16 : 16 + table_length])
-        table_bits = io.StringIO(table_bits.to01())
         table = {}
-        # for dc_ac in [DC, AC]:
-        #     table.extend(uint_to_binstr(len(category_codeword[dc_ac]), 16))
-        #     for category, codeword in category_codeword[dc_ac].items():
-        #         if dc_ac == DC:
-        #             table.extend(uint_to_binstr(category, 4))
-        #             table.extend(uint_to_binstr(len(codeword), 4))
-        #         else:
-        #             table.extend(uint_to_binstr(category[0], 4))
-        #             table.extend(uint_to_binstr(category[1], 4))
-        #             table.extend(uint_to_binstr(len(codeword), 8))
-        #         table.extend(codeword)
-
+        for dc_ac in [DC, AC]:
+            l = buf.read_uint(16)
+            table[dc_ac] = bidict()
+            for _ in range(l):
+                if dc_ac == DC:
+                    category = buf.read_uint(4)
+                    size = buf.read_uint(4)
+                else:
+                    category = (buf.read_uint(4), buf.read_uint(4))
+                    size = buf.read_uint(8)
+                codeword = buf.read(size)
+                table[dc_ac][category] = codeword.to01()
     else:
         table = None
-    return height, width, quality, table
+    info["height"] = height
+    info["width"] = width
+    info["quality"] = quality
+    info["category_codeword"] = table
 
 
 def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
     info = encode(image, quality)
     dc = info["dc"]
     ac = info["ac"]
-    # buf = io.StringIO()
     buf = BitBuffer()
 
     ac_rle = []
@@ -158,16 +157,13 @@ def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
 
 def decompress(data: bytes):
     info = {}
-    (
-        info["height"],
-        info["width"],
-        info["quality"],
-        category_codeword,
-    ) = parse_header(data[:16])
-    if category_codeword is None:
+    buf = BitBuffer.from_bytes(data)
+    parse_header(buf, info)
+    if info["category_codeword"] is None:
         category_codeword = HUFFMAN_CATEGORY_CODEWORD
+    else:
+        category_codeword = info["category_codeword"]
     block_count = math.ceil(info["height"] / 8) * math.ceil(info["width"] / 8)
-    buf = BitBuffer.from_bytes(data[16:])
     dc = decode_huffman(buf, block_count, DC, category_codeword)
     ac = np.zeros((block_count, 63), dtype=np.int32)
     for i in range(block_count):
