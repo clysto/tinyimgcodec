@@ -14,10 +14,17 @@ def int_to_binstr(n):
 
 
 def binstr_to_int(binstr):
-    if binstr[0] == "1":
-        return int(binstr, 2)
-    else:
-        return int("".join(map(lambda c: "0" if c == "1" else "1", binstr)), 2) * -1
+    if binstr == "":
+        return 0
+    return (
+        int(binstr, 2)
+        if binstr[0] == "1"
+        else int("".join(map(lambda c: "0" if c == "1" else "1", binstr)), 2) * -1
+    )
+
+def uint_to_binstr(n, size):
+    binstr = f"{n:0b}"
+    return binstr.zfill(size)
 
 
 def bits_required(x):

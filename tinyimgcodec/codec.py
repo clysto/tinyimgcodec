@@ -5,8 +5,10 @@ from struct import pack, unpack
 import numpy as np
 from bitarray import bitarray
 
-from .constants import AC, DC, ZIGZAG_ORDER
+from .bitbuffer import BitBuffer
+from .constants import AC, DC, HUFFMAN_CATEGORY_CODEWORD, ZIGZAG_ORDER
 from .huffman import (
+    calc_huffman_table,
     decode_huffman,
     decode_run_length,
     encode_huffman,
@@ -19,6 +21,7 @@ from .utils import (
     block_quantize,
     block_slice,
     pad_image,
+    uint_to_binstr,
 )
 
 
@@ -63,34 +66,114 @@ def decode(data: np.ndarray):
     return coeffs.astype(np.uint8)
 
 
-def make_header(image_info):
-    return pack("III", image_info["height"], image_info["width"], image_info["quality"])
+def make_header(buf:BitBuffer, image_info, category_codeword=None):
+    if category_codeword is not None:
+        table = bitarray()
+        for dc_ac in [DC, AC]:
+            table.extend(uint_to_binstr(len(category_codeword[dc_ac]), 16))
+            for category, codeword in category_codeword[dc_ac].items():
+                if dc_ac == DC:
+                    table.extend(uint_to_binstr(category, 4))
+                    table.extend(uint_to_binstr(len(codeword), 4))
+                else:
+                    table.extend(uint_to_binstr(category[0], 4))
+                    table.extend(uint_to_binstr(category[1], 4))
+                    table.extend(uint_to_binstr(len(codeword), 8))
+                table.extend(codeword)
+        flag = 1 << 15
+        table_length = len(table)
+    else:
+        flag = 0
+        table_length = 0
+    header = pack(
+        "IIIHH",
+        image_info["height"],
+        image_info["width"],
+        image_info["quality"],
+        flag,
+        table_length,
+    )
+    buf.write_bytes(header)
+    if category_codeword is not None:
+        buf.write(table)
+    return header
 
 
-def compress(image: np.ndarray, quality=50):
+def parse_header(header):
+    height, width, quality, flag, table_length = unpack("IIIHH", header[:16])
+    if flag & (1 << 15):
+        table_bits = bitarray()
+        table_bits.frombytes(header[16 : 16 + table_length])
+        table_bits = io.StringIO(table_bits.to01())
+        table = {}
+        # for dc_ac in [DC, AC]:
+        #     table.extend(uint_to_binstr(len(category_codeword[dc_ac]), 16))
+        #     for category, codeword in category_codeword[dc_ac].items():
+        #         if dc_ac == DC:
+        #             table.extend(uint_to_binstr(category, 4))
+        #             table.extend(uint_to_binstr(len(codeword), 4))
+        #         else:
+        #             table.extend(uint_to_binstr(category[0], 4))
+        #             table.extend(uint_to_binstr(category[1], 4))
+        #             table.extend(uint_to_binstr(len(codeword), 8))
+        #         table.extend(codeword)
+
+    else:
+        table = None
+    return height, width, quality, table
+
+
+def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
     info = encode(image, quality)
-    header = make_header(info)
     dc = info["dc"]
     ac = info["ac"]
-    buf = io.StringIO()
-    encode_huffman(buf, dc, dc_ac=DC)
-    for i in range(ac.shape[0]):
-        encode_huffman(buf, encode_run_length(ac[i]), dc_ac=AC)
+    # buf = io.StringIO()
+    buf = BitBuffer()
 
-    return header + bitarray(buf.getvalue()).tobytes()
+    ac_rle = []
+    ac_rle_eob_index = [0]
+    # run-length encode ac coeffs
+    for i in range(ac.shape[0]):
+        ac_rle.extend(encode_run_length(ac[i]))
+        ac_rle_eob_index.append(len(ac_rle))
+
+    if auto_generate_huffman_table:
+        category_codeword = calc_huffman_table(dc, ac_rle)
+        make_header(buf, info, category_codeword)
+    else:
+        category_codeword = HUFFMAN_CATEGORY_CODEWORD
+        make_header(buf, info)
+
+    encode_huffman(buf, dc, dc_ac=DC, category_codeword=category_codeword)
+    for i in range(ac.shape[0]):
+        encode_huffman(
+            buf,
+            ac_rle[ac_rle_eob_index[i] : ac_rle_eob_index[i + 1]],
+            dc_ac=AC,
+            category_codeword=category_codeword,
+        )
+
+    return buf.to_bytes()
 
 
 def decompress(data: bytes):
     info = {}
-    info["height"], info["width"], info["quality"] = unpack("III", data[:12])
+    (
+        info["height"],
+        info["width"],
+        info["quality"],
+        category_codeword,
+    ) = parse_header(data[:16])
+    if category_codeword is None:
+        category_codeword = HUFFMAN_CATEGORY_CODEWORD
     block_count = math.ceil(info["height"] / 8) * math.ceil(info["width"] / 8)
-    buf = bitarray()
-    buf.frombytes(data[12:])
-    buf = io.StringIO(buf.to01())
-    dc = decode_huffman(buf, block_count, DC)
+    buf = BitBuffer.from_bytes(data[16:])
+    dc = decode_huffman(buf, block_count, DC, category_codeword)
     ac = np.zeros((block_count, 63), dtype=np.int32)
     for i in range(block_count):
-        ac_block = decode_run_length(decode_huffman(buf, dc_ac=AC))
+        ac_block = decode_run_length(
+            decode_huffman(buf, dc_ac=AC, category_codeword=category_codeword)
+        )
         ac[i, : len(ac_block)] = ac_block
     info["dc"] = np.array(dc)
     info["ac"] = ac

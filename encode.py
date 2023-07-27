@@ -9,7 +9,7 @@ from tinyimgcodec import compress
 
 im = Image.open(sys.argv[1]).convert("L")
 
-out = compress(np.asarray(im))
+out = compress(np.asarray(im), auto_generate_huffman_table=False)
 
 byte_size = len(out)
 print(f"{byte_size} bytes")
