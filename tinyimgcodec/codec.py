@@ -64,63 +64,61 @@ def decode(data: np.ndarray):
     return coeffs.astype(np.uint8)
 
 
+def write_huffman_table(buf: BitBuffer, table: dict[str, bidict]):
+    buf.write_uint(len(table[DC]), 16)
+    for category, codeword in table[DC].items():
+        buf.write_uint(category, 4)
+        buf.write_uint(len(codeword), 4)
+        buf.write(codeword)
+    buf.write_uint(len(table[AC]), 16)
+    for category, codeword in table[AC].items():
+        buf.write_uint(category[0], 4)
+        buf.write_uint(category[1], 4)
+        buf.write_uint(len(codeword), 8)
+        buf.write(codeword)
+
+
+def read_huffman_table(buf: BitBuffer):
+    table = {DC: bidict(), AC: bidict()}
+    for _ in range(buf.read_uint(16)):
+        category = buf.read_uint(4)
+        size = buf.read_uint(4)
+        codeword = buf.read(size)
+        table[DC][category] = codeword.to01()
+    for _ in range(buf.read_uint(16)):
+        category = (buf.read_uint(4), buf.read_uint(4))
+        size = buf.read_uint(8)
+        codeword = buf.read(size)
+        table[AC][category] = codeword.to01()
+    return table
+
+
 def make_header(buf: BitBuffer, image_info, category_codeword=None):
-    if category_codeword is not None:
-        table = BitBuffer()
-        for dc_ac in [DC, AC]:
-            table.write_uint(len(category_codeword[dc_ac]), 16)
-            for category, codeword in category_codeword[dc_ac].items():
-                if dc_ac == DC:
-                    table.write_uint(category, 4)
-                    table.write_uint(len(codeword), 4)
-                else:
-                    table.write_uint(category[0], 4)
-                    table.write_uint(category[1], 4)
-                    table.write_uint(len(codeword), 8)
-                table.write(codeword)
-        flag = 1 << 15
-        table = table.to_bytes()
-        table_length = len(table)
-    else:
-        flag = 0
-        table_length = 0
     header = pack(
-        "IIIHH",
+        "III",
         image_info["height"],
         image_info["width"],
         image_info["quality"],
-        flag,
-        table_length,
     )
     buf.write_bytes(header)
     if category_codeword is not None:
-        buf.write_bytes(table)
+        buf.write_uint(1 << 31, 32)
+        write_huffman_table(buf, category_codeword)
+    else:
+        buf.write_uint(0, 32)
 
 
 def parse_header(buf: BitBuffer, info: dict):
     header = buf.read_bytes(16)
-    height, width, quality, flag, table_length = unpack("IIIHH", header)
-    buf = BitBuffer.from_bytes(buf.read_bytes(table_length))
-    if flag & (1 << 15):
-        table = {}
-        for dc_ac in [DC, AC]:
-            l = buf.read_uint(16)
-            table[dc_ac] = bidict()
-            for _ in range(l):
-                if dc_ac == DC:
-                    category = buf.read_uint(4)
-                    size = buf.read_uint(4)
-                else:
-                    category = (buf.read_uint(4), buf.read_uint(4))
-                    size = buf.read_uint(8)
-                codeword = buf.read(size)
-                table[dc_ac][category] = codeword.to01()
-    else:
-        table = None
+    height, width, quality, flag = unpack("IIII", header)
     info["height"] = height
     info["width"] = width
     info["quality"] = quality
-    info["category_codeword"] = table
+    if flag & (1 << 31):
+        table = read_huffman_table(buf)
+        info["category_codeword"] = table
+    else:
+        table = None
 
 
 def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
@@ -159,10 +157,10 @@ def decompress(data: bytes):
     info = {}
     buf = BitBuffer.from_bytes(data)
     parse_header(buf, info)
-    if info["category_codeword"] is None:
-        category_codeword = HUFFMAN_CATEGORY_CODEWORD
-    else:
+    if "category_codeword" in info:
         category_codeword = info["category_codeword"]
+    else:
+        category_codeword = HUFFMAN_CATEGORY_CODEWORD
     block_count = math.ceil(info["height"] / 8) * math.ceil(info["width"] / 8)
     dc = decode_huffman(buf, block_count, DC, category_codeword)
     ac = np.zeros((block_count, 63), dtype=np.int32)
