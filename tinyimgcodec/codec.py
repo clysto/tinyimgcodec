@@ -141,8 +141,8 @@ def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
         category_codeword = HUFFMAN_CATEGORY_CODEWORD
         make_header(buf, info)
 
-    encode_huffman(buf, dc, dc_ac=DC, category_codeword=category_codeword)
     for i in range(ac.shape[0]):
+        encode_huffman(buf, dc[i:i+1], dc_ac=DC, category_codeword=category_codeword)
         encode_huffman(
             buf,
             ac_rle[ac_rle_eob_index[i] : ac_rle_eob_index[i + 1]],
@@ -162,9 +162,10 @@ def decompress(data: bytes):
     else:
         category_codeword = HUFFMAN_CATEGORY_CODEWORD
     block_count = math.ceil(info["height"] / 8) * math.ceil(info["width"] / 8)
-    dc = decode_huffman(buf, block_count, DC, category_codeword)
+    dc = np.zeros(block_count, dtype=np.int32)
     ac = np.zeros((block_count, 63), dtype=np.int32)
     for i in range(block_count):
+        dc[i] = decode_huffman(buf, 1, DC, category_codeword)[0]
         ac_block = decode_run_length(
             decode_huffman(buf, dc_ac=AC, category_codeword=category_codeword)
         )

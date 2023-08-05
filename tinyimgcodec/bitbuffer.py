@@ -1,5 +1,3 @@
-from typing import Iterable
-
 from bitarray import bitarray
 from bitarray.util import ba2int, int2ba
 
@@ -24,7 +22,7 @@ class BitBuffer:
         self.__pos += n
         return ret
 
-    def write(self, x: str | Iterable[int] | bitarray):
+    def write(self, x):
         self.__bitarray.extend(x)
         self.__pos = len(self.__bitarray)
 

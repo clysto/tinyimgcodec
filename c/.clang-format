@@ -1,0 +1,5 @@
+BasedOnStyle: Google
+IndentWidth: 4
+AllowShortFunctionsOnASingleLine: None
+ColumnLimit: 120
+AlignConsecutiveMacros: true
