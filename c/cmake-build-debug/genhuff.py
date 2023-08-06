@@ -1,1 +1,0 @@
-from tinyimgcodec import constants

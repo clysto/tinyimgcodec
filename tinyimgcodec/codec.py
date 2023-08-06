@@ -5,7 +5,7 @@ import numpy as np
 from bidict import bidict
 
 from .bitbuffer import BitBuffer
-from .constants import AC, DC, HUFFMAN_CATEGORY_CODEWORD, ZIGZAG_ORDER
+from .constants import AC, ANNSCALES, DC, HUFFMAN_CATEGORY_CODEWORD, ZIGZAG_ORDER
 from .huffman import (
     calc_huffman_table,
     decode_huffman,
@@ -43,10 +43,11 @@ def encode(image: np.ndarray, quality=50):
     }
 
 
-def decode(data: np.ndarray):
+def decode(data):
     height = data["height"]
     width = data["width"]
     quality = data["quality"]
+    scaled_dct = data["scaled_dct"]
     blocks_per_row = math.ceil(width / 8)
     blocks_per_col = math.ceil(height / 8)
     dc = np.cumsum(data["dc"])
@@ -55,7 +56,10 @@ def decode(data: np.ndarray):
     coeffs[:, 0] = dc
     coeffs[:, 1:] = ac
     coeffs[:, ZIGZAG_ORDER] = coeffs.copy()
-    coeffs = coeffs.reshape(blocks_per_col, blocks_per_row, 8, 8)
+    if scaled_dct:
+        coeffs = coeffs.reshape(blocks_per_col, blocks_per_row, 8, 8) * 8 / ANNSCALES
+    else:
+        coeffs = coeffs.reshape(blocks_per_col, blocks_per_row, 8, 8)
     coeffs = block_quantize(coeffs, quality, inverse=True)
     coeffs = block_idct(coeffs)
     coeffs = block_combine(coeffs)
@@ -114,9 +118,12 @@ def parse_header(buf: BitBuffer, info: dict):
     info["height"] = height
     info["width"] = width
     info["quality"] = quality
+    info["scaled_dct"] = False
     if flag & (1 << 31):
         table = read_huffman_table(buf)
         info["category_codeword"] = table
+    elif flag & (1 << 30):
+        info["scaled_dct"] = True
     else:
         table = None
 
@@ -142,7 +149,9 @@ def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
         make_header(buf, info)
 
     for i in range(ac.shape[0]):
-        encode_huffman(buf, dc[i:i+1], dc_ac=DC, category_codeword=category_codeword)
+        encode_huffman(
+            buf, dc[i : i + 1], dc_ac=DC, category_codeword=category_codeword
+        )
         encode_huffman(
             buf,
             ac_rle[ac_rle_eob_index[i] : ac_rle_eob_index[i + 1]],

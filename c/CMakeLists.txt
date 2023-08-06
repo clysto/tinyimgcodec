@@ -10,4 +10,4 @@ add_executable(encode
         bitbuf.h
         encode.c
         img.c
-        img.h)
+        img.h huff.c huff.h)

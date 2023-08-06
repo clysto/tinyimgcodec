@@ -3,3 +3,6 @@ venv
 .vscode
 .DS_Store
 *.img
+cmake-build*
+.idea
+*.dat
