@@ -150,7 +150,7 @@ Image *IMG_create(int width, int height) {
     img->bitBuffer.out = img->out;
     img->bitBuffer.putBits = 0;
     int quality = 50;
-    uint32_t flag = 1 << 30;
+    uint32_t flag = (uint32_t)1 << 30;
     memcpy(img->out, &height, 4);
     memcpy(img->out + 4, &width, 4);
     memcpy(img->out + 8, &quality, 4);
