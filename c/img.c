@@ -4,7 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "bitbuf.h"
+#include "bitwriter.h"
+#include "fifo.h"
 #include "huff.h"
 
 const uint8_t QUANT[64] = {16, 11, 10, 16, 24,  40,  51,  61,  12, 12, 14, 19, 26,  58,  60,  55,
@@ -108,58 +109,59 @@ int IMG_encodeRunlength(int data, int zeroCnt, int *runlength, int *value) {
     }
 }
 
-void IMG_dcEncodeHuffman(BitBuffer *bb, int data) {
+void IMG_dcEncodeHuffman(BitWriter *writer, FIFO *fifo, int data) {
     uint32_t value = data > 0 ? data : -data;
     int bits = data != 0 ? 32 - __builtin_clz(value) : 0;
-    BB_emitBits(bb, DC_HUFF_TABLE[bits], DC_HUFF_TABLE_CODELEN[bits]);
+    BB_emitBits(writer, fifo, DC_HUFF_TABLE[bits], DC_HUFF_TABLE_CODELEN[bits]);
     if (data == 0) {
         return;
     }
     if (data < 0) {
-        BB_emitBits(bb, ~value, bits);
+        BB_emitBits(writer, fifo, ~value, bits);
     } else {
-        BB_emitBits(bb, value, bits);
+        BB_emitBits(writer, fifo, value, bits);
     }
 }
 
-void IMG_acEncodeHuffman(BitBuffer *bb, int runlength, int data) {
+void IMG_acEncodeHuffman(BitWriter *writer, FIFO *fifo, int runlength, int data) {
     uint32_t value = data > 0 ? data : -data;
     int bits = data != 0 ? 32 - __builtin_clz(value) : 0;
     uint32_t category = AC_HUFF_TABLE[runlength][bits];
     int codeLen = AC_HUFF_TABLE_CODELEN[runlength][bits];
-    BB_emitBits(bb, category, codeLen);
+    BB_emitBits(writer, fifo, category, codeLen);
     if (data == 0) {
         return;
     }
     if (data < 0) {
-        BB_emitBits(bb, ~value, bits);
+        BB_emitBits(writer, fifo, ~value, bits);
     } else {
-        BB_emitBits(bb, value, bits);
+        BB_emitBits(writer, fifo, value, bits);
     }
 }
 
 Image *IMG_create(int width, int height) {
     Image *img = (Image *)malloc(sizeof(Image));
-    img->out = malloc(width * height * 8);
     img->width = width;
     img->height = height;
-    img->prevDC = 0;
     img->buf = malloc(width * 8);
-    img->blocksPerLine = width / 8;
     img->bufSize = 0;
-    img->bitBuffer.out = img->out;
-    img->bitBuffer.putBits = 0;
-    int quality = 50;
-    uint32_t flag = (uint32_t)1 << 30;
-    memcpy(img->out, &height, 4);
-    memcpy(img->out + 4, &width, 4);
-    memcpy(img->out + 8, &quality, 4);
-    memcpy(img->out + 12, &flag, 4);
-    img->bitBuffer.size = 16;
+    img->prevDC = 0;
+    img->blocksPerLine = width / 8;
+    img->bitWriter.putBits = 0;
+    img->bitWriter.putBuffer = 0;
     return img;
 }
 
-void IMG_push(Image *img, uint8_t *data, size_t size) {
+void IMG_compressStart(Image *img, FIFO *fifo) {
+    int quality = 50;
+    uint32_t flag = (uint32_t)1 << 30;
+    FIFO_copyIn(fifo, (uint8_t *)&img->height, 4);
+    FIFO_copyIn(fifo, (uint8_t *)&img->width, 4);
+    FIFO_copyIn(fifo, (uint8_t *)&quality, 4);
+    FIFO_copyIn(fifo, (uint8_t *)&flag, 4);
+}
+
+void IMG_compressPush(Image *img, uint8_t *data, size_t size, FIFO *fifo) {
     size_t copySize = size;
     if (size > img->width * 8 - img->bufSize) {
         copySize = img->width * 8 - img->bufSize;
@@ -178,7 +180,7 @@ void IMG_push(Image *img, uint8_t *data, size_t size) {
             IMG_fdct(block);
             // write DC value
             int dc = (int)round(block[0] / QUANT[0] / 8);
-            IMG_dcEncodeHuffman(&img->bitBuffer, dc - img->prevDC);
+            IMG_dcEncodeHuffman(&img->bitWriter, fifo, dc - img->prevDC);
             img->prevDC = dc;
             int zeroCnt = 0, runlength, value, zrlCnt = 0;
             for (i = 1; i < 63; i++) {
@@ -190,31 +192,28 @@ void IMG_push(Image *img, uint8_t *data, size_t size) {
                     } else {
                         // write AC value
                         while (zrlCnt > 0) {
-                            IMG_acEncodeHuffman(&img->bitBuffer, 15, 0);
+                            IMG_acEncodeHuffman(&img->bitWriter, fifo, 15, 0);
                             zrlCnt--;
                         }
-                        IMG_acEncodeHuffman(&img->bitBuffer, runlength, value);
+                        IMG_acEncodeHuffman(&img->bitWriter, fifo, runlength, value);
                     }
                 }
             }
             // write EOB
-            IMG_acEncodeHuffman(&img->bitBuffer, 0, 0);
+            IMG_acEncodeHuffman(&img->bitWriter, fifo, 0, 0);
         }
         img->bufSize = 0;
-        img->outSize = img->bitBuffer.size;
     }
     if (copySize < size) {
-        IMG_push(img, data + copySize, size - copySize);
+        IMG_compressPush(img, data + copySize, size - copySize, fifo);
     }
 }
 
-void IMG_complete(Image *img) {
-    BB_flushBits(&img->bitBuffer);
-    img->outSize = img->bitBuffer.size;
+void IMG_compressComplete(Image *img, FIFO *fifo) {
+    BB_flushBits(&img->bitWriter, fifo);
 }
 
 void IMG_destroy(Image *img) {
-    free(img->out);
     free(img->buf);
     free(img);
 }

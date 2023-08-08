@@ -5,9 +5,4 @@ set(CMAKE_C_STANDARD 11)
 
 include_directories(.)
 
-add_executable(encode
-        bitbuf.c
-        bitbuf.h
-        encode.c
-        img.c
-        img.h huff.c huff.h)
+add_executable(encode bitwriter.c bitwriter.h encode.c img.c img.h huff.c huff.h fifo.c fifo.h)
