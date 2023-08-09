@@ -93,7 +93,7 @@ void IMG_fdct(double *data) {
     }
 }
 
-int IMG_encodeRunlength(int data, int zeroCnt, int *runlength, int *value) {
+int IMG_encodeRunlength(int32_t data, int zeroCnt, int *runlength, int32_t *value) {
     if (data == 0) {
         zeroCnt++;
         if (zeroCnt >= 16) {
@@ -109,7 +109,7 @@ int IMG_encodeRunlength(int data, int zeroCnt, int *runlength, int *value) {
     }
 }
 
-void IMG_dcEncodeHuffman(BitWriter *writer, FIFO *fifo, int data) {
+void IMG_dcEncodeHuffman(BitWriter *writer, FIFO *fifo, int32_t data) {
     uint32_t value = data > 0 ? data : -data;
     int bits = data != 0 ? 32 - __builtin_clz(value) : 0;
     BB_emitBits(writer, fifo, DC_HUFF_TABLE[bits], DC_HUFF_TABLE_CODELEN[bits]);
@@ -123,11 +123,11 @@ void IMG_dcEncodeHuffman(BitWriter *writer, FIFO *fifo, int data) {
     }
 }
 
-void IMG_acEncodeHuffman(BitWriter *writer, FIFO *fifo, int runlength, int data) {
+void IMG_acEncodeHuffman(BitWriter *writer, FIFO *fifo, int runlength, int32_t data) {
     uint32_t value = data > 0 ? data : -data;
     int bits = data != 0 ? 32 - __builtin_clz(value) : 0;
     uint32_t category = AC_HUFF_TABLE[runlength][bits];
-    int codeLen = AC_HUFF_TABLE_CODELEN[runlength][bits];
+    uint8_t codeLen = AC_HUFF_TABLE_CODELEN[runlength][bits];
     BB_emitBits(writer, fifo, category, codeLen);
     if (data == 0) {
         return;
@@ -153,10 +153,12 @@ Image *IMG_create(int width, int height) {
 }
 
 void IMG_compressStart(Image *img, FIFO *fifo) {
-    int quality = 50;
+    uint32_t quality = 50;
     uint32_t flag = (uint32_t)1 << 30;
-    FIFO_copyIn(fifo, (uint8_t *)&img->height, 4);
-    FIFO_copyIn(fifo, (uint8_t *)&img->width, 4);
+    uint32_t height = img->height;
+    uint32_t width = img->width;
+    FIFO_copyIn(fifo, (uint8_t *)&height, 4);
+    FIFO_copyIn(fifo, (uint8_t *)&width, 4);
     FIFO_copyIn(fifo, (uint8_t *)&quality, 4);
     FIFO_copyIn(fifo, (uint8_t *)&flag, 4);
 }
@@ -179,13 +181,14 @@ void IMG_compressPush(Image *img, uint8_t *data, size_t size, FIFO *fifo) {
             }
             IMG_fdct(block);
             // write DC value
-            int dc = (int)round(block[0] / QUANT[0] / 8);
+            int32_t dc = (int32_t)round(block[0] / QUANT[0] / 8);
             IMG_dcEncodeHuffman(&img->bitWriter, fifo, dc - img->prevDC);
             img->prevDC = dc;
-            int zeroCnt = 0, runlength, value, zrlCnt = 0;
+            int zeroCnt = 0, runlength = 0, zrlCnt = 0;
+            int32_t value;
             for (i = 1; i < 63; i++) {
-                zeroCnt = IMG_encodeRunlength((int)round(block[ZIGZAG[i]] / QUANT[ZIGZAG[i]] / 8), zeroCnt, &runlength,
-                                              &value);
+                zeroCnt = IMG_encodeRunlength((int32_t)round(block[ZIGZAG[i]] / QUANT[ZIGZAG[i]] / 8), zeroCnt,
+                                              &runlength, &value);
                 if (zeroCnt == 0) {
                     if (runlength == 15 && value == 0) {
                         zrlCnt++;
