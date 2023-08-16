@@ -6,16 +6,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define FIFO_writeByte(fifo, byte) fifo->buff[fifo->front++ & fifo->mask] = byte
-#define FIFO_size(fifo)            (fifo->front - fifo->rear)
+#define FIFO_writeByte(fifo, byte) (fifo)->buf[(fifo)->front++ & (fifo)->mask] = byte
+#define FIFO_size(fifo)            ((fifo)->front - (fifo)->rear)
 
 typedef struct {
     unsigned front;
     unsigned rear;
     unsigned mask;
-    uint8_t *buff;
+    uint8_t *buf;
 } FIFO;
 
+void FIFO_init(FIFO *fifo, uint8_t *buf, unsigned size);
 FIFO *FIFO_new(unsigned size);
 void FIFO_free(FIFO *fifo);
 void FIFO_copyOut(FIFO *fifo, uint8_t *dst, unsigned len);
