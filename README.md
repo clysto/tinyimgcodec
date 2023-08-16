@@ -2,6 +2,14 @@
 
 精简版灰度图 JPEG 编码器。
 
+## C Version
+
+C 版本通过以下自解压脚本下载:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/clysto/tinyimgcodec/main/c/tinyimgcodec.sh)"
+```
+
 ## Usage
 
 ```sh
