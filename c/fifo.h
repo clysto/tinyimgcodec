@@ -7,6 +7,7 @@
 #include <string.h>
 
 #define FIFO_writeByte(fifo, byte) (fifo)->buf[(fifo)->front++ & (fifo)->mask] = byte
+#define FIFO_readByte(fifo)        (fifo)->buf[(fifo)->rear++ & (fifo)->mask]
 #define FIFO_size(fifo)            ((fifo)->front - (fifo)->rear)
 
 typedef struct {
