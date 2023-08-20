@@ -14,9 +14,12 @@ typedef struct {
     int width;
     int height;
     int prevDC;
+    uint8_t qfactor;
     uint16_t scaledQuant[64];
     BitWriter bitWriter;
 } Image;
+
+enum { IMG_Q_BEST = 0, IMG_Q_HIGH, IMG_Q_MED, IMG_Q_LOW };
 
 #define BB_emitBits(writer, fifo, code, size)                                                   \
     do {                                                                                        \
@@ -36,7 +39,7 @@ typedef struct {
         (writer)->putBits = 0;                           \
     } while (0)
 
-void IMG_init(Image *img, int width, int height);
+void IMG_init(Image *img, int width, int height, uint8_t qfactor);
 void IMG_encodeHeader(Image *img, FIFO *fifo);
 void IMG_encodeComplete(Image *img, FIFO *fifo);
 void IMG_encodeBlock(Image *img, const uint8_t data[64], FIFO *fifo);

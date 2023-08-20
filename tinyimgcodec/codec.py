@@ -57,7 +57,9 @@ def decode(data):
     coeffs[:, 1:] = ac
     coeffs[:, ZIGZAG_ORDER] = coeffs.copy()
     if scaled_dct:
-        coeffs = coeffs.reshape(blocks_per_col, blocks_per_row, 8, 8) * 8 / ANNSCALES
+        coeffs = coeffs.reshape(blocks_per_col, blocks_per_row, 8, 8) / ANNSCALES
+        coeffs *= 2 ** (quality)
+        quality = 50
     else:
         coeffs = coeffs.reshape(blocks_per_col, blocks_per_row, 8, 8)
     coeffs = block_quantize(coeffs, quality, inverse=True)

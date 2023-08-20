@@ -4,28 +4,33 @@
 #include "fifo.h"
 #include "img.h"
 
-void process(FIFO *fifo, char *base, int frameSize) {
-    static int frameIndex = 0;
-    char filename[32];
-    FILE *fp;
-    while (FIFO_size(fifo) >= frameSize) {
-        sprintf(filename, "%s_%d.img", base, frameIndex++);
-        fp = fopen(filename, "wb");
-        FIFO_pipeOut(fifo, fp, frameSize);
-        fclose(fp);
-    }
-}
-
-void process2(FIFO *fifo, FILE *fp, int frameSize) {
+void write_all(FIFO *fifo, FILE *fp, int frameSize) {
     while (FIFO_size(fifo) >= frameSize) {
         FIFO_pipeOut(fifo, fp, frameSize);
     }
 }
 
 int main(int argc, char **argv) {
-    if (argc != 5) {
-        printf("Usage: encode [width] [height] [input] [output]\n");
+    uint8_t qfactor;
+    if (argc < 5) {
+        printf("Usage: encode <width> <height> <input> <output> [qfactor]\n");
         return 1;
+    }
+    if (argc == 6) {
+        if (strcmp(argv[5], "best") == 0) {
+            qfactor = IMG_Q_BEST;
+        } else if (strcmp(argv[5], "high") == 0) {
+            qfactor = IMG_Q_HIGH;
+        } else if (strcmp(argv[5], "med") == 0) {
+            qfactor = IMG_Q_MED;
+        } else if (strcmp(argv[5], "low") == 0) {
+            qfactor = IMG_Q_LOW;
+        } else {
+            printf("Invalid quality factor\n");
+            return 1;
+        }
+    } else {
+        qfactor = IMG_Q_MED;
     }
     int width = (int)strtol(argv[1], NULL, 10);
     int height = (int)strtol(argv[2], NULL, 10);
@@ -34,7 +39,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     Image img;
-    IMG_init(&img, width, height);
+    IMG_init(&img, width, height, qfactor);
     FILE *in = fopen(argv[3], "rb");
     FILE *out = fopen(argv[4], "wb");
     FIFO *fifo = FIFO_new(1024 * 8);
@@ -51,10 +56,10 @@ int main(int argc, char **argv) {
             }
             IMG_encodeBlock(&img, data, fifo);
         }
-        process2(fifo, out, 1024);
+        write_all(fifo, out, 1024);
     }
     IMG_encodeComplete(&img, fifo);
-    process2(fifo, out, FIFO_size(fifo));
+    write_all(fifo, out, FIFO_size(fifo));
     fclose(out);
     FIFO_free(fifo);
     fclose(in);

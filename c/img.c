@@ -154,19 +154,34 @@ static inline void IMG_acEncodeHuffman(BitWriter *writer, FIFO *fifo, int runlen
     }
 }
 
-void IMG_init(Image *img, int width, int height) {
+void IMG_init(Image *img, int width, int height, uint8_t qfactor) {
     img->width = width;
     img->height = height;
     img->prevDC = 0;
     img->bitWriter.putBits = 0;
     img->bitWriter.putBuffer = 0;
+    img->qfactor = qfactor;
     for (int i = 0; i < 64; i++) {
-        img->scaledQuant[i] = 65536 / QUANT[i];
+        switch (qfactor) {
+            default:
+            case IMG_Q_BEST:
+                img->scaledQuant[i] = 65536 / (QUANT[i]);
+                break;
+            case IMG_Q_HIGH:
+                img->scaledQuant[i] = 65536 / (QUANT[i] << 1);
+                break;
+            case IMG_Q_MED:
+                img->scaledQuant[i] = 65536 / (QUANT[i] << 2);
+                break;
+            case IMG_Q_LOW:
+                img->scaledQuant[i] = 65536 / (QUANT[i] << 3);
+                break;
+        }
     }
 }
 
 void IMG_encodeHeader(Image *img, FIFO *fifo) {
-    uint32_t quality = 50;
+    uint32_t quality = img->qfactor;
     uint32_t flag = (uint32_t)1 << 30;
     uint32_t height = img->height;
     uint32_t width = img->width;
@@ -182,9 +197,9 @@ void IMG_quantize(Image *img, int16_t block[64]) {
         d = block[i];
         q = QUANT[i] >> 1;
         if (d < 0) {
-            block[i] = (int16_t)(-(((q - d) * img->scaledQuant[i]) >> 19));
+            block[i] = (int16_t)(-(((q - d) * img->scaledQuant[i]) >> 16));
         } else {
-            block[i] = (int16_t)(((q + d) * img->scaledQuant[i]) >> 19);
+            block[i] = (int16_t)(((q + d) * img->scaledQuant[i]) >> 16);
         }
     }
 }
