@@ -12,18 +12,18 @@ void write_all(FIFO *fifo, FILE *fp, int frameSize) {
 
 int main(int argc, char **argv) {
     uint8_t qfactor;
-    if (argc < 5) {
-        printf("Usage: encode <width> <height> <input> <output> [qfactor]\n");
+    if (argc < 3) {
+        printf("Usage: encode <width> <height> [qfactor]\n");
         return 1;
     }
-    if (argc == 6) {
-        if (strcmp(argv[5], "best") == 0) {
+    if (argc == 4) {
+        if (strcmp(argv[3], "best") == 0) {
             qfactor = IMG_Q_BEST;
-        } else if (strcmp(argv[5], "high") == 0) {
+        } else if (strcmp(argv[3], "high") == 0) {
             qfactor = IMG_Q_HIGH;
-        } else if (strcmp(argv[5], "med") == 0) {
+        } else if (strcmp(argv[3], "med") == 0) {
             qfactor = IMG_Q_MED;
-        } else if (strcmp(argv[5], "low") == 0) {
+        } else if (strcmp(argv[3], "low") == 0) {
             qfactor = IMG_Q_LOW;
         } else {
             printf("Invalid quality factor\n");
@@ -40,8 +40,8 @@ int main(int argc, char **argv) {
     }
     Image img;
     IMG_init(&img, width, height, qfactor);
-    FILE *in = fopen(argv[3], "rb");
-    FILE *out = fopen(argv[4], "wb");
+    FILE *in = stdin;
+    FILE *out = stdout;
     FIFO *fifo = FIFO_new(1024 * 8);
     IMG_encodeHeader(&img, fifo);
     while (!feof(in)) {

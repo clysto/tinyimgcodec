@@ -40,10 +40,3 @@ if nimg % 2 == 1:
     axs[-1].axis("off")
 
 plt.show()
-
-
-# with open(sys.argv[1], "rb") as f:
-#     im = decompress(f.read())
-#     plt.figure()
-#     plt.imshow(im, cmap="gray", vmin=0, vmax=255)
-#     plt.show()

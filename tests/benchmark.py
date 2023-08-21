@@ -1,4 +1,3 @@
-import math
 import time
 
 import numpy as np
@@ -6,15 +5,8 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 
+from tests.psnr import psnr
 from tinyimgcodec import compress, decompress
-
-
-def psnr(data1, data2, max_pixel=255):
-    mse = np.mean((data1 - data2) ** 2)
-    if mse:
-        return 20 * math.log10(max_pixel / mse**0.5)
-    return math.inf
-
 
 results = []
 for i in tqdm(range(49)):
