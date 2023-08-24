@@ -6,3 +6,4 @@ venv
 cmake-build*
 .idea
 *.dat
+build
