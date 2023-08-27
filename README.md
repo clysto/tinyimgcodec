@@ -21,6 +21,8 @@ C 版本通过以下自解压脚本下载:
 
 ## Benchmark
 
+> All tests were conducted on a MacBook Pro 2020, 13-inch.
+
 ### Python Version Benchmark
 
 ![Result](tests/result.png)
