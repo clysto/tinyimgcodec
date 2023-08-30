@@ -35,7 +35,9 @@ def encode_run_length(seq):
 
 def decode_run_length(seq):
     # Remove the last element as the last created by EOB would always be a `0`.
-    return tuple(item for l, k in seq for item in [0] * l + [k])[:-1]
+    r = tuple(item for l, k in seq for item in [0] * l + [k])[:-1]
+    r = r[:63]
+    return r
 
 
 def encode_huffman(
@@ -65,8 +67,12 @@ def encode_huffman(
 
 def read_huffman_code(buf: BitBuffer, table: bidict):
     prefix = ""
-    while prefix not in table:
-        prefix += buf.read(1).to01()
+    i = 0
+    while prefix not in table and i <= 16:
+        prefix += buf.read(1)
+        i += 1
+    if i > 16:
+        raise ValueError("Invalid Huffman code.")
     return table[prefix]
 
 
@@ -84,7 +90,7 @@ def decode_huffman(
             value = buf.read_int(category)
             symbols.append(value)
     elif dc_ac == AC:
-        while True:
+        for _ in range(63):
             category = read_huffman_code(buf, table)
             run_length, size = category
             value = buf.read_int(size)

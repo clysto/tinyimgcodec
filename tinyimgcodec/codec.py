@@ -4,7 +4,7 @@ from struct import pack, unpack
 import numpy as np
 from bidict import bidict
 
-from .bitbuffer import BitBuffer
+from .bitbuffer import BitBuffer, BitBuffer2
 from .constants import AC, ANNSCALES, DC, HUFFMAN_CATEGORY_CODEWORD, ZIGZAG_ORDER
 from .huffman import (
     calc_huffman_table,
@@ -32,7 +32,7 @@ def encode(image: np.ndarray, quality=50):
     coeffs = coeffs.reshape(coeffs.shape[0], coeffs.shape[1], 64)
     coeffs = coeffs[:, :, ZIGZAG_ORDER]
     dc = coeffs[:, :, 0].reshape(-1)
-    dc[1:] = np.diff(dc)
+    # dc[1:] = np.diff(dc)
     ac = coeffs[:, :, 1:].reshape(-1, 63)
     return {
         "height": height,
@@ -50,7 +50,8 @@ def decode(data):
     scaled_dct = data["scaled_dct"]
     blocks_per_row = math.ceil(width / 8)
     blocks_per_col = math.ceil(height / 8)
-    dc = np.cumsum(data["dc"])
+    # dc = np.cumsum(data["dc"])
+    dc = data["dc"]
     ac = data["ac"]
     coeffs = np.zeros((dc.shape[0], 64), dtype=np.int32)
     coeffs[:, 0] = dc
@@ -90,12 +91,12 @@ def read_huffman_table(buf: BitBuffer):
         category = buf.read_uint(4)
         size = buf.read_uint(4)
         codeword = buf.read(size)
-        table[DC][category] = codeword.to01()
+        table[DC][category] = codeword
     for _ in range(buf.read_uint(16)):
         category = (buf.read_uint(4), buf.read_uint(4))
         size = buf.read_uint(8)
         codeword = buf.read(size)
-        table[AC][category] = codeword.to01()
+        table[AC][category] = codeword
     return table
 
 
@@ -150,23 +151,39 @@ def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
         category_codeword = HUFFMAN_CATEGORY_CODEWORD
         make_header(buf, info)
 
+    prev_dc = 0
+    rst_index = 0
     for i in range(ac.shape[0]):
+        block_buf = BitBuffer()
+        # encode single block (MCU)
         encode_huffman(
-            buf, dc[i : i + 1], dc_ac=DC, category_codeword=category_codeword
+            block_buf,
+            dc[i : i + 1] - prev_dc,
+            dc_ac=DC,
+            category_codeword=category_codeword,
         )
+        prev_dc = dc[i : i + 1]
         encode_huffman(
-            buf,
+            block_buf,
             ac_rle[ac_rle_eob_index[i] : ac_rle_eob_index[i + 1]],
             dc_ac=AC,
             category_codeword=category_codeword,
         )
+        buf.write_bytes(block_buf.to_bytes().replace(b"\xff", b"\xff\x00"))
+        if i % 64 == 63:
+            # write RST marker
+            prev_dc = 0
+            buf.write_bytes(bytearray([0xFF, 0xD0 + rst_index]))
+            rst_index = (rst_index + 1) % 8
 
     return buf.to_bytes()
 
 
 def decompress(data: bytes):
+    # data = data[:16] + data[16:].replace(b"\xff\x00", b"\xff")
+    # data = data[:16] + data[16:].replace(b"\xff\xd0", b"")
     info = {}
-    buf = BitBuffer.from_bytes(data)
+    buf = BitBuffer2.from_bytes(data)
     parse_header(buf, info)
     if "category_codeword" in info:
         category_codeword = info["category_codeword"]
@@ -175,12 +192,38 @@ def decompress(data: bytes):
     block_count = math.ceil(info["height"] / 8) * math.ceil(info["width"] / 8)
     dc = np.zeros(block_count, dtype=np.int32)
     ac = np.zeros((block_count, 63), dtype=np.int32)
-    for i in range(block_count):
-        dc[i] = decode_huffman(buf, 1, DC, category_codeword)[0]
-        ac_block = decode_run_length(
-            decode_huffman(buf, dc_ac=AC, category_codeword=category_codeword)
-        )
-        ac[i, : len(ac_block)] = ac_block
+
+    prev_dc = 0
+    prev_rst_index = -1
+    i = 0
+    while i < block_count:
+        try:
+            dc[i] = prev_dc = prev_dc + decode_huffman(buf, 1, DC, category_codeword)[0]
+            ac_block = decode_run_length(
+                decode_huffman(buf, dc_ac=AC, category_codeword=category_codeword)
+            )
+            ac[i, : len(ac_block)] = ac_block
+            buf.align()
+        except Exception as e:
+            # print(f"Error decoding block {i}: {e}")
+            pass
+        if i % 64 == 63:
+            prev_dc = 0
+            try:
+                rst_index = buf.sync_rst()
+                if rst_index > 7 or rst_index < 0:
+                    i += 1
+                    continue
+                if rst_index < prev_rst_index:
+                    rst_index += 8
+                i += (rst_index - prev_rst_index - 1) * 64
+                print(rst_index, end="\t\t")
+                print((rst_index - prev_rst_index - 1) * 64)
+                prev_rst_index = rst_index % 8
+            except Exception as e:
+                pass
+        i += 1
+
     info["dc"] = np.array(dc)
     info["ac"] = ac
     return decode(info)
