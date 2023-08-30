@@ -114,7 +114,7 @@ class BitBuffer2:
         while not (b[0] != 0 and b[1] == 0xFF):
             b[1] = b[0]
             b[0] = self.buf.read(1)[0]
-        return b[0] - 0xD0
+        return b[0] - 1
 
     def consume_rst(self):
         i = self.buf.tell()

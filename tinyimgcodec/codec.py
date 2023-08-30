@@ -170,18 +170,16 @@ def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
             category_codeword=category_codeword,
         )
         buf.write_bytes(block_buf.to_bytes().replace(b"\xff", b"\xff\x00"))
-        if i % 64 == 63:
+        if i % 4 == 3:
             # write RST marker
             prev_dc = 0
-            buf.write_bytes(bytearray([0xFF, 0xD0 + rst_index]))
-            rst_index = (rst_index + 1) % 8
+            buf.write_bytes(bytearray([0xFF, rst_index + 1]))
+            rst_index = (rst_index + 1) % 254
 
     return buf.to_bytes()
 
 
 def decompress(data: bytes):
-    # data = data[:16] + data[16:].replace(b"\xff\x00", b"\xff")
-    # data = data[:16] + data[16:].replace(b"\xff\xd0", b"")
     info = {}
     buf = BitBuffer2.from_bytes(data)
     parse_header(buf, info)
@@ -196,6 +194,7 @@ def decompress(data: bytes):
     prev_dc = 0
     prev_rst_index = -1
     i = 0
+    r = 0
     while i < block_count:
         try:
             dc[i] = prev_dc = prev_dc + decode_huffman(buf, 1, DC, category_codeword)[0]
@@ -207,20 +206,21 @@ def decompress(data: bytes):
         except Exception as e:
             # print(f"Error decoding block {i}: {e}")
             pass
-        if i % 64 == 63:
+        if i % 4 == 3:
             prev_dc = 0
             try:
                 rst_index = buf.sync_rst()
-                if rst_index > 7 or rst_index < 0:
+                if rst_index > 253 or rst_index < 0:
                     i += 1
                     continue
                 if rst_index < prev_rst_index:
-                    rst_index += 8
-                i += (rst_index - prev_rst_index - 1) * 64
-                print(rst_index, end="\t\t")
-                print((rst_index - prev_rst_index - 1) * 64)
-                prev_rst_index = rst_index % 8
-            except Exception as e:
+                    rst_index += 254
+                    r += 1
+                if (rst_index - prev_rst_index) > 10:
+                    continue
+                i += (rst_index - prev_rst_index - 1) * 4
+                prev_rst_index = rst_index % 254
+            except Exception:
                 pass
         i += 1
 

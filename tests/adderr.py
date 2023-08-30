@@ -3,29 +3,23 @@
 import sys
 import random
 
-PROTECT_HEADER_BYTES = 16
+PROTECT_HEADER_BYTES = 32
 
 
 def main():
-    if len(sys.argv) != 4:
-        print("Usage: adderr.py <file> <out> <ber>")
+    if len(sys.argv) != 2:
+        print("Usage: adderr.py <ber>")
         sys.exit(1)
-    filename = sys.argv[1]
-    ber = sys.argv[3]
-    with open(filename, "rb") as f:
-        data = f.read()
-
+    ber = sys.argv[1]
+    data = sys.stdin.buffer.read()
     data = bytearray(data)
-
     for i in range(len(data)):
         if i < PROTECT_HEADER_BYTES:
             continue
         for j in range(8):
             if random.random() < float(ber):
                 data[i] ^= 1 << j
-
-    with open(sys.argv[2], "wb") as f:
-        f.write(data)
+    sys.stdout.buffer.write(data)
 
 
 if __name__ == "__main__":
