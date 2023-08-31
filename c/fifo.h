@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define FIFO_writeEscapeByte(fifo, byte)                \
+    (fifo)->buf[(fifo)->front++ & (fifo)->mask] = byte; \
+    ((byte) == 0xff) ? (fifo)->buf[(fifo)->front++ & (fifo)->mask] = 0x00 : 0;
 #define FIFO_writeByte(fifo, byte) (fifo)->buf[(fifo)->front++ & (fifo)->mask] = byte
 #define FIFO_readByte(fifo)        (fifo)->buf[(fifo)->rear++ & (fifo)->mask]
 #define FIFO_size(fifo)            ((fifo)->front - (fifo)->rear)

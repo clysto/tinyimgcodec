@@ -158,6 +158,8 @@ void IMG_init(Image *img, int width, int height, uint8_t qfactor) {
     img->width = width;
     img->height = height;
     img->prevDC = 0;
+    img->blockCount = 0;
+    img->rstIndex = 0;
     img->bitWriter.putBits = 0;
     img->bitWriter.putBuffer = 0;
     img->qfactor = qfactor;
@@ -246,6 +248,14 @@ void IMG_encodeBlock(Image *img, const uint8_t data[64], FIFO *fifo) {
     }
     // write EOB
     IMG_acEncodeHuffman(&img->bitWriter, fifo, 0, 0);
+    BB_flushBits(&img->bitWriter, fifo);
+    if (img->blockCount % 4 == 3) {
+        img->prevDC = 0;
+        FIFO_writeByte(fifo, 0xff);
+        FIFO_writeByte(fifo, img->rstIndex + 1);
+        img->rstIndex = (img->rstIndex + 1) % 254;
+    }
+    img->blockCount++;
 }
 
 void IMG_encodeComplete(Image *img, FIFO *fifo) {

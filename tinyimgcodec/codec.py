@@ -203,8 +203,7 @@ def decompress(data: bytes):
             )
             ac[i, : len(ac_block)] = ac_block
             buf.align()
-        except Exception as e:
-            # print(f"Error decoding block {i}: {e}")
+        except Exception:
             pass
         if i % 4 == 3:
             prev_dc = 0
