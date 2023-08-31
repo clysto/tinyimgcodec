@@ -35,7 +35,7 @@ enum { IMG_Q_BEST = 0, IMG_Q_HIGH, IMG_Q_MED, IMG_Q_LOW };
         }                                                                                           \
     } while (0)
 
-#define BB_flushBits(writer, fifo) BB_emitBits(writer, fifo, 0, (8 - ((writer)->putBits)) % 8);
+#define BB_flushBits(writer, fifo) BB_emitBits(writer, fifo, 0, (8 - ((writer)->putBits)) & 7);
 
 void IMG_init(Image *img, int width, int height, uint8_t qfactor);
 void IMG_encodeHeader(Image *img, FIFO *fifo);

@@ -249,7 +249,7 @@ void IMG_encodeBlock(Image *img, const uint8_t data[64], FIFO *fifo) {
     // write EOB
     IMG_acEncodeHuffman(&img->bitWriter, fifo, 0, 0);
     BB_flushBits(&img->bitWriter, fifo);
-    if (img->blockCount % 4 == 3) {
+    if ((img->blockCount & 3) == 3) {
         img->prevDC = 0;
         FIFO_writeByte(fifo, 0xff);
         FIFO_writeByte(fifo, img->rstIndex + 1);
