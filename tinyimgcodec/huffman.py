@@ -65,8 +65,12 @@ def encode_huffman(
 
 def read_huffman_code(buf: BitBuffer, table: bidict):
     prefix = ""
-    while prefix not in table:
+    i = 0
+    while prefix not in table and i <= 16:
         prefix += buf.read(1).to01()
+        i += 1
+    if i > 16:
+        raise ValueError("Invalid Huffman code.")
     return table[prefix]
 
 

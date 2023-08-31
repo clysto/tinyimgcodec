@@ -176,11 +176,14 @@ def decompress(data: bytes):
     dc = np.zeros(block_count, dtype=np.int32)
     ac = np.zeros((block_count, 63), dtype=np.int32)
     for i in range(block_count):
-        dc[i] = decode_huffman(buf, 1, DC, category_codeword)[0]
-        ac_block = decode_run_length(
-            decode_huffman(buf, dc_ac=AC, category_codeword=category_codeword)
-        )
-        ac[i, : len(ac_block)] = ac_block
+        try:
+            dc[i] = decode_huffman(buf, 1, DC, category_codeword)[0]
+            ac_block = decode_run_length(
+                decode_huffman(buf, dc_ac=AC, category_codeword=category_codeword)
+            )
+            ac[i, : len(ac_block)] = ac_block
+        except Exception:
+            pass
     info["dc"] = np.array(dc)
     info["ac"] = ac
     return decode(info)
