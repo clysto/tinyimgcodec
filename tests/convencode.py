@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-
 import sys
 
 import numpy as np
@@ -13,11 +12,9 @@ codec = Viterbi(
 data = np.frombuffer(sys.stdin.buffer.read(), dtype=np.uint8)
 data = np.unpackbits(data)
 
-print(len(data))
 r = len(data) * 2 % 18
 r = (18 - r) % 18
 r = np.zeros(r // 2, dtype=np.uint8)
-
 
 data = np.hstack((data, r))
 data = codec.encode(data)
