@@ -7,3 +7,5 @@ cmake-build*
 .idea
 *.dat
 build
+*.pgm
+/go/tinyimgcodec
