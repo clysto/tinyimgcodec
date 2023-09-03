@@ -7,6 +7,13 @@ import (
 	"math"
 )
 
+var ErrInvalidHuffmanCode = errors.New("invalid huffman code")
+
+type ByteReader interface {
+	ReadByte() (byte, error)
+	Read(p []byte) (n int, err error)
+}
+
 type BitReader struct {
 	PutBuffer uint32
 	PutBits   int
@@ -26,67 +33,84 @@ func (bb *BitReader) FlushBits() {
 	}
 }
 
-func (bb *BitReader) Read(buf io.Reader, size int) uint32 {
-	x := make([]byte, 1)
+func (bb *BitReader) Read(buf ByteReader, size int) (uint32, error) {
 	for bb.PutBits < size {
-		buf.Read(x)
-		if x[0] == 0xff {
-			buf.Read(x)
-			if x[0] == 0x00 {
-				x[0] = 0xff
+		b, err := buf.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+		if b == 0xff {
+			b, err = buf.ReadByte()
+			if err != nil {
+				return 0, err
+			}
+			if b == 0x00 {
+				b = 0xff
 			} else {
-				buf.Read(x)
+				b, err = buf.ReadByte()
+				if err != nil {
+					return 0, err
+				}
 			}
 		}
-		bb.PutBuffer |= (uint32(x[0]) << (24 - bb.PutBits))
+		bb.PutBuffer |= (uint32(b) << (24 - bb.PutBits))
 		bb.PutBits += 8
 	}
 	ret := bb.PutBuffer >> (32 - size)
 	bb.PutBits -= size
 	bb.PutBuffer <<= size
-	return ret
+	return ret, nil
 }
 
-func SyncRst(buf io.Reader) (int32, error) {
-	b := make([]uint8, 1)
+func SyncRst(buf ByteReader) (int32, error) {
+	var x uint8
 	var y uint8
-	for !((b[0] != 0) && (y == 0xff)) {
-		y = b[0]
-		_, err := buf.Read(b)
+	var err error
+	for !((x != 0) && (y == 0xff)) {
+		y = x
+		x, err = buf.ReadByte()
 		if err != nil {
 			return 0, err
 		}
 	}
-	return int32(b[0]) - 1, nil
+	return int32(x) - 1, nil
 }
 
-func (bb *BitReader) ReadInt(buf io.Reader, size int) int32 {
+func (bb *BitReader) ReadInt(buf ByteReader, size int) (int32, error) {
 	if size == 0 {
-		return 0
+		return 0, nil
 	}
-	value := bb.Read(buf, size)
+	value, err := bb.Read(buf, size)
+	if err != nil {
+		return 0, err
+	}
 	if value>>(size-1) == 0 {
-		return -(int32(^value & ((1 << size) - 1)))
+		return -(int32(^value & ((1 << size) - 1))), nil
 	}
-	return int32(value)
+	return int32(value), nil
 }
 
-func ReadHuffmanCode[T any](bb *BitReader, buf io.Reader, table map[[2]uint32]T) (T, error) {
+func ReadHuffmanCode[T any](bb *BitReader, buf ByteReader, table map[[2]uint32]T) (T, error) {
 	var code [2]uint32
 	for {
 		code[1]++
-		code[0] = code[0]<<1 | bb.Read(buf, 1)
+		b, err := bb.Read(buf, 1)
+		if err != nil {
+			var ret T
+			return ret, err
+		}
+		code[0] = code[0]<<1 | b
 		val, ok := table[code]
 		if ok {
 			return val, nil
 		}
 		if code[1] > 16 {
-			return val, errors.New("invalid huffman code")
+			return val, ErrInvalidHuffmanCode
 		}
 	}
 }
 
-func ParseHeader(buf io.Reader) ImageInfo {
+func ParseHeader(buf ByteReader) ImageInfo {
 	var info ImageInfo
 	header := make([]byte, 16)
 	buf.Read(header)
@@ -123,7 +147,7 @@ func CalcQuantTable(quality int32, flag uint32) []float64 {
 	return table
 }
 
-func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
+func Decompress(buf ByteReader) ([]uint8, *ImageInfo) {
 	var bb BitReader
 	var blockIndex uint32
 	var prevDC int32
@@ -145,13 +169,23 @@ func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
 
 	for blockIndex < blockCount {
 		var block [64]int32
-		category, _ := ReadHuffmanCode[uint8](&bb, buf, DC_HUFF_TABLE_R)
-		block[0] = bb.ReadInt(buf, int(category)) + prevDC
+		category, err := ReadHuffmanCode[uint8](&bb, buf, DC_HUFF_TABLE_R)
+		if errors.Is(err, io.EOF) {
+			goto stop
+		}
+		dc, err := bb.ReadInt(buf, int(category))
+		if errors.Is(err, io.EOF) {
+			goto stop
+		}
+		block[0] = dc + prevDC
 		prevDC = block[0]
 		var j uint
 		for j < 64 {
 			j++
-			symbol, _ := ReadHuffmanCode[[2]uint8](&bb, buf, AC_HUFF_TABLE_R)
+			symbol, err := ReadHuffmanCode[[2]uint8](&bb, buf, AC_HUFF_TABLE_R)
+			if errors.Is(err, io.EOF) {
+				goto stop
+			}
 			runlength := symbol[0]
 			category = symbol[1]
 			// meet EOB Marker
@@ -163,7 +197,7 @@ func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
 				bb.ReadInt(buf, int(category))
 				break
 			}
-			block[ZIGZAG[j]] = bb.ReadInt(buf, int(category))
+			block[ZIGZAG[j]], _ = bb.ReadInt(buf, int(category))
 		}
 		bb.FlushBits()
 

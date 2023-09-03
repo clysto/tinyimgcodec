@@ -65,6 +65,32 @@ def encode_huffman(
         buf.write(value[16 - l :])
 
 
+def encode_huffman2(
+    buf1: BitBuffer,
+    buf2: BitBuffer,
+    symbols,
+    dc_ac=DC,
+    category_codeword=HUFFMAN_CATEGORY_CODEWORD,
+):
+    if dc_ac == DC:
+        values = symbols
+        categories = bits_required(symbols)
+        values_length = categories
+    elif dc_ac == AC:
+        symbols = np.array(symbols)
+        values = symbols[:, 1].copy()
+        symbols[:, 1] = bits_required(symbols[:, 1])
+        categories = map(tuple, symbols)
+        values_length = symbols[:, 1]
+    else:
+        raise ValueError("dc_ac should be either DC or AC.")
+    values_str = np.unpackbits(np.abs(values).astype(">u2").view(np.uint8))
+    values_str = values_str.reshape(-1, 16) ^ (values < 0).reshape((-1, 1))
+    for category, value, l in zip(categories, values_str, values_length):
+        buf1.write(category_codeword[dc_ac][category])
+        buf2.write(value[16 - l :])
+
+
 def read_huffman_code(buf: BitBuffer, table: bidict):
     prefix = ""
     i = 0
