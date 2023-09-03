@@ -1,4 +1,4 @@
-package main
+package tinyimgcodec
 
 const (
 	w1 = 2841 // 2048*sqrt(2)*cos(1*pi/16)

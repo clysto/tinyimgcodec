@@ -8,5 +8,4 @@ cmake-build*
 *.dat
 build
 *.pgm
-/go/tinyimgcodec
 /go/release

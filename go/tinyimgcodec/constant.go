@@ -1,4 +1,4 @@
-package main
+package tinyimgcodec
 
 var DC_HUFF_TABLE_R = map[[2]uint32]uint8{
 	{0x0000, 2}: 0,

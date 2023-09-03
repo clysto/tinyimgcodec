@@ -1,4 +1,4 @@
-package main
+package tinyimgcodec
 
 import (
 	"encoding/binary"
@@ -47,14 +47,17 @@ func (bb *BitReader) Read(buf io.Reader, size int) uint32 {
 	return ret
 }
 
-func SyncRst(buf io.Reader) int32 {
+func SyncRst(buf io.Reader) (int32, error) {
 	b := make([]uint8, 1)
 	var y uint8
 	for !((b[0] != 0) && (y == 0xff)) {
 		y = b[0]
-		buf.Read(b)
+		_, err := buf.Read(b)
+		if err != nil {
+			return 0, err
+		}
 	}
-	return int32(b[0]) - 1
+	return int32(b[0]) - 1, nil
 }
 
 func (bb *BitReader) ReadInt(buf io.Reader, size int) int32 {
@@ -125,8 +128,16 @@ func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
 	var blockIndex uint32
 	var prevDC int32
 	var prevRstIndex int32 = -1
-
 	info := ParseHeader(buf)
+
+	if info.Width > 4096 {
+		info.Width = 4096
+	}
+
+	if info.Height > 4096 {
+		info.Height = 4096
+	}
+
 	quantTable := CalcQuantTable(int32(info.Quality), info.Flag)
 	img := make([]uint8, info.Height*info.Width)
 	blockCount := (info.Height / 8) * (info.Width / 8)
@@ -134,25 +145,25 @@ func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
 
 	for blockIndex < blockCount {
 		var block [64]int32
-		len, _ := ReadHuffmanCode[uint8](&bb, buf, DC_HUFF_TABLE_R)
-		block[0] = bb.ReadInt(buf, int(len)) + prevDC
+		category, _ := ReadHuffmanCode[uint8](&bb, buf, DC_HUFF_TABLE_R)
+		block[0] = bb.ReadInt(buf, int(category)) + prevDC
 		prevDC = block[0]
 		var j uint
 		for j < 64 {
 			j++
 			symbol, _ := ReadHuffmanCode[[2]uint8](&bb, buf, AC_HUFF_TABLE_R)
 			runlength := symbol[0]
-			len = symbol[1]
+			category = symbol[1]
 			// meet EOB Marker
-			if runlength == 0 && len == 0 {
+			if runlength == 0 && category == 0 {
 				break
 			}
 			j += uint(runlength)
 			if j > 63 {
-				bb.ReadInt(buf, int(len))
+				bb.ReadInt(buf, int(category))
 				break
 			}
-			block[ZIGZAG[j]] = bb.ReadInt(buf, int(len))
+			block[ZIGZAG[j]] = bb.ReadInt(buf, int(category))
 		}
 		bb.FlushBits()
 
@@ -172,6 +183,9 @@ func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
 				if pixel > 255 {
 					pixel = 255
 				}
+				if int(x*info.Width+y) >= len(img) {
+					goto stop
+				}
 				img[x*info.Width+y] = uint8(pixel)
 				index++
 			}
@@ -179,8 +193,8 @@ func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
 
 		if blockIndex&3 == 3 {
 			prevDC = 0
-			rstIndex := SyncRst(buf)
-			if rstIndex > 253 {
+			rstIndex, err := SyncRst(buf)
+			if err != nil || rstIndex > 253 {
 				blockIndex += 1
 				continue
 			}
@@ -195,5 +209,6 @@ func Decompress(buf io.Reader) ([]uint8, *ImageInfo) {
 		}
 		blockIndex++
 	}
+stop:
 	return img, &info
 }
