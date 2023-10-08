@@ -179,6 +179,10 @@ def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
     return buf.to_bytes()
 
 
+def decode_block(buf: BitBuffer, info: dict):
+    pass
+
+
 def decompress(data: bytes):
     info = {}
     buf = BitBuffer2.from_bytes(data)

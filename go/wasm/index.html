@@ -52,9 +52,14 @@
       const canvasDom = document.getElementById('canvas');
       const ctx = canvasDom.getContext('2d');
       const go = new Go();
-      WebAssembly.instantiateStreaming(fetch('./main.wasm'), go.importObject).then((result) => {
-        go.run(result.instance);
-      });
+      async function init() {
+        const response = await fetch('./main.wasm');
+        const buffer = await response.arrayBuffer();
+        WebAssembly.instantiate(buffer, go.importObject).then((result) => {
+          go.run(result.instance);
+        });
+      }
+      init();
       function handleFile(e) {
         const f = e.target.files[0];
         const reader = new FileReader();
