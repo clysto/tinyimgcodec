@@ -1,8 +1,12 @@
 import math
 from struct import pack, unpack
+from subprocess import Popen, PIPE
 
 import numpy as np
+from io import BytesIO
 from bidict import bidict
+
+from PIL import Image
 
 from .bitbuffer import BitBuffer, BitBuffer2
 from .constants import AC, ANNSCALES, DC, HUFFMAN_CATEGORY_CODEWORD, ZIGZAG_ORDER
@@ -179,8 +183,12 @@ def compress(image: np.ndarray, quality=50, auto_generate_huffman_table=False):
     return buf.to_bytes()
 
 
-def decode_block(buf: BitBuffer, info: dict):
-    pass
+def decompress_fast(data: bytes, exe_path: str):
+    process = Popen([exe_path], stdout=PIPE, stdin=PIPE)
+    out, _ = process.communicate(data)
+    buf = BytesIO(out)
+    im = Image.open(buf)
+    return np.asarray(im)
 
 
 def decompress(data: bytes):
